@@ -154,11 +154,11 @@ namespace Pulsar.Common.DNS
             var temp = _hosts.Dequeue();
             _hosts.Enqueue(temp); 
             temp.IpAddress = ResolveHostname(temp);
-            if (temp.IpAddress == null && _lastResolvedHost != null)
+            if (temp.Transport != TransportKind.HttpsLongPoll && temp.IpAddress == null && _lastResolvedHost != null)
             {
                 temp = _lastResolvedHost;
             }
-            else
+            else if (temp.IpAddress != null)
             {
                 _lastResolvedHost = temp;
             }

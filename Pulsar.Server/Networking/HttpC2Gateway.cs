@@ -159,7 +159,7 @@ namespace Pulsar.Server.Networking
                 var payload = ms.ToArray();
                 if (payload.Length > 0)
                 {
-                    session.Stream.EnqueueIncoming(payload, 0, payload.Length);
+                    session.Stream.EnqueueFramedIncoming(payload, 0, payload.Length);
                 }
             }
 
