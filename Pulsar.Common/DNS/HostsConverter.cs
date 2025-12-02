@@ -14,11 +14,11 @@ namespace Pulsar.Common.DNS
 
             if (string.IsNullOrEmpty(rawHosts)) return hostsList;
 
-            if ((rawHosts.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+            if ((rawHosts.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                  rawHosts.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) &&
                 !rawHosts.Contains(";"))
             {
-                hostsList.Add(new Host { Hostname = rawHosts });
+                hostsList.Add(CreateFromUri(rawHosts));
                 return hostsList;
             }
 
@@ -31,7 +31,7 @@ namespace Pulsar.Common.DNS
                 if (Uri.TryCreate(host, UriKind.Absolute, out Uri uri) &&
                     (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
                 {
-                    hostsList.Add(new Host { Hostname = host });
+                    hostsList.Add(CreateFromUri(host));
                 }
                 else if (host.Contains(':'))
                 {
@@ -51,6 +51,21 @@ namespace Pulsar.Common.DNS
             }
 
             return hostsList;
+        }
+
+        private static Host CreateFromUri(string host)
+        {
+            if (Uri.TryCreate(host, UriKind.Absolute, out Uri uri))
+            {
+                return new Host
+                {
+                    Hostname = host,
+                    Port = uri.IsDefaultPort ? (ushort)443 : (ushort)uri.Port,
+                    Transport = TransportKind.HttpsLongPoll
+                };
+            }
+
+            return new Host { Hostname = host };
         }
 
         public string ListToRawHosts(IList<Host> hosts)

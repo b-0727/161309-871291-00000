@@ -247,6 +247,11 @@ namespace Pulsar.Common.DNS
         {
             if (string.IsNullOrEmpty(host.Hostname)) return null;
 
+            if (host.Transport == TransportKind.HttpsLongPoll)
+            {
+                return null;
+            }
+
             if (IPAddress.TryParse(host.Hostname, out IPAddress ip))
             {
                 if (ip.AddressFamily == AddressFamily.InterNetworkV6 && !Socket.OSSupportsIPv6)
