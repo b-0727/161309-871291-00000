@@ -161,6 +161,7 @@ namespace Pulsar.Server.Networking
             ValidateBuffer(buffer, offset, count);
             EnsureNotDisposed();
 
+            var framesEnqueued = false;
             lock (_incomingFrameLock)
             {
                 // Accumulate the raw HTTP body bytes before attempting to peel off complete frames.
@@ -178,10 +179,15 @@ namespace Pulsar.Server.Networking
                     {
                         _incoming.Enqueue(frame[i]);
                     }
+
+                    framesEnqueued = true;
                 }
             }
 
-            _incomingAvailable.Set();
+            if (framesEnqueued)
+            {
+                _incomingAvailable.Set();
+            }
         }
 
         private bool TryDequeueFrame(out byte[] payload)
