@@ -209,7 +209,8 @@ namespace Pulsar.Client.Networking
                             int read;
                             while ((read = await stream.ReadAsync(buffer, 0, buffer.Length, _cts.Token)) > 0)
                             {
-                                // Only feed framed bytes into the HTTP frame processor; it will queue app payloads for consumers.
+                                // Only feed framed bytes into the HTTP frame processor; it deframes, enqueues payload bytes,
+                                // and signals availability for readers.
                                 ProcessIncomingFrames(buffer, read);
                             }
                         }
