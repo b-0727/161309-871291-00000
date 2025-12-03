@@ -317,6 +317,7 @@ namespace Pulsar.Client
             RegisterProcessor(new RegistryHandler());
             RegisterProcessor(new RemoteShellHandler(client));
             RegisterProcessor(new ReverseProxyHandler(client));
+            RegisterProcessor(new HttpTransportInfoHandler(client));
             RegisterProcessor(new ShutdownHandler());
             RegisterProcessor(new StartupManagerHandler());
             RegisterProcessor(new SystemInformationHandler());

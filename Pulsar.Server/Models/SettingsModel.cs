@@ -37,6 +37,12 @@ namespace Pulsar.Server.Models
         [JsonProperty("showToolTip")]
         public bool ShowToolTip { get; set; } = false;
 
+        [JsonProperty("httpC2Enabled")]
+        public bool HttpC2Enabled { get; set; } = false;
+
+        [JsonProperty("httpC2Port")]
+        public ushort HttpC2Port { get; set; } = 8080;
+
         [JsonProperty("enableNoIPUpdater")]
         public bool EnableNoIPUpdater { get; set; } = false;
 

