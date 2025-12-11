@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using Pulsar.Common.Models;
 
 namespace Pulsar.Server.Models
 {
@@ -43,6 +44,12 @@ namespace Pulsar.Server.Models
         [JsonProperty("httpC2Port")]
         public ushort HttpC2Port { get; set; } = 8080;
 
+        [JsonProperty("httpC2Paths")]
+        public HttpC2Paths HttpC2Paths { get; set; } = new HttpC2Paths();
+
+        [JsonProperty("httpC2Token")]
+        public string HttpC2Token { get; set; } = "change-me";
+
         [JsonProperty("enableNoIPUpdater")]
         public bool EnableNoIPUpdater { get; set; } = false;
 
@@ -60,7 +67,7 @@ namespace Pulsar.Server.Models
         public ushort ReverseProxyPort { get; set; } = 3128;
 
         [JsonProperty("ListenPorts")]
-        public ushort[] ListenPorts { get; set; } = [4782];
+        public ushort[] ListenPorts { get; set; } = new ushort[] { 4782 };
 
         [JsonProperty("showCountryGroups")]
         public bool ShowCountryGroups { get; set; } = true;

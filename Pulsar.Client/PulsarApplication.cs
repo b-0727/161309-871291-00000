@@ -222,21 +222,10 @@ namespace Pulsar.Client
                 PulsarClient client;
                 string hosts = Settings.HOSTS;
 
-                if (Settings.PASTEBIN && 
-                    (hosts.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
-                     hosts.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
-                {
-                    Debug.WriteLine("Using pastebin mode with URL: " + hosts);
-                    var hostsManager = new HostsManager(hosts);
-                    client = new PulsarClient(hostsManager, Settings.SERVERCERTIFICATE);
-                }
-                else
-                {
-                    Debug.WriteLine("Using standard host list mode");
-                    var hostsList = new HostsConverter().RawHostsToList(hosts);
-                    var hostsManager = new HostsManager(hostsList);
-                    client = new PulsarClient(hostsManager, Settings.SERVERCERTIFICATE);
-                }
+                Debug.WriteLine("Using standard host list mode");
+                var hostsList = new HostsConverter().RawHostsToList(hosts);
+                var hostsManager = new HostsManager(hostsList);
+                client = new PulsarClient(hostsManager, Settings.SERVERCERTIFICATE);
 
                 _connectClient = client;
                 _connectClient.ClientState += ConnectClientOnClientState;
